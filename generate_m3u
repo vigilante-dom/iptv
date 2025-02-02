@@ -1,65 +1,65 @@
 import requests
+import xml.etree.ElementTree as ET
+from datetime import datetime
 
-# Base API URL (Replace with the actual API URL)
-BASE_URL = "https://streamed.su/api/stream/alpha/[id]"
+BASE_URL = "https://streamed.example.com/api"
 
 def get_live_matches():
     """Fetches live matches from the API."""
     url = f"{BASE_URL}/matches/live"
-    response = requests.get(url)
-    if response.status_code == 200:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for HTTP errors
         return response.json()
-    else:
-        print("❌ Failed to fetch live matches")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error fetching live matches: {e}")
         return []
 
-def get_streams(source, match_id):
-    """Fetches stream links for a match."""
-    url = f"{BASE_URL}/stream/{source}/{match_id}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"❌ Failed to fetch streams for {match_id}")
-        return []
+def convert_to_xmltv_time(unix_timestamp):
+    """Converts a Unix timestamp to XMLTV format."""
+    dt = datetime.utcfromtimestamp(unix_timestamp / 1000)
+    return dt.strftime("%Y%m%d%H%M%S +0000")
 
-def generate_m3u(matches):
-    """Generates an M3U playlist from live matches."""
-    m3u_content = "#EXTM3U\n"
+def generate_epg_xml(matches):
+    """Generates an XMLTV EPG file from live matches."""
+    root = ET.Element("tv", generator="Streamed API EPG")
 
     for match in matches:
         if "teams" in match and match["teams"]:
             home = match["teams"].get("home", {}).get("name", "Unknown")
             away = match["teams"].get("away", {}).get("name", "Unknown")
+            channel_id = f"{home.lower()}-{away.lower()}".replace(" ", "-")
 
-            if match.get("sources"):
-                source = match["sources"][0]["source"]
-                match_id = match["sources"][0]["id"]
-                stream_url = f"{BASE_URL}/stream/{source}/{match_id}"
+            channel = ET.SubElement(root, "channel", id=channel_id)
+            ET.SubElement(channel, "display-name").text = f"{home} vs {away}"
 
-                channel_id = f"{home.lower()}-{away.lower()}".replace(" ", "-")
-                m3u_content += f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{home} vs {away}", {home} vs {away}\n'
-                m3u_content += f"{stream_url}\n"
+            start_time = convert_to_xmltv_time(match["date"])
+            stop_time = convert_to_xmltv_time(match["date"] + (2 * 60 * 60 * 1000))  # Assume 2-hour match
 
-    return m3u_content
+            programme = ET.SubElement(root, "programme", start=start_time, stop=stop_time, channel=channel_id)
+            ET.SubElement(programme, "title").text = f"Live: {home} vs {away}"
+            ET.SubElement(programme, "desc").text = f"Watch the exciting match between {home} and {away}."
+            ET.SubElement(programme, "category").text = "Sports"
 
-def save_m3u_to_file(m3u_data, filename="playlist.m3u"):
-    """Saves the M3U playlist to a file."""
+    return ET.tostring(root, encoding="utf-8").decode("utf-8")
+
+def save_epg_to_file(epg_data, filename="epg.xml"):
+    """Saves the EPG XML file."""
     with open(filename, "w", encoding="utf-8") as file:
-        file.write(m3u_data)
+        file.write(epg_data)
 
 def main():
     print("📢 Fetching live matches...")
     live_matches = get_live_matches()
 
     if live_matches:
-        print("✅ Found matches. Generating M3U...")
+        print("✅ Found matches. Generating EPG...")
 
-        # Generate and save M3U
-        m3u_data = generate_m3u(live_matches)
-        save_m3u_to_file(m3u_data)
+        # Generate and save EPG
+        epg_xml = generate_epg_xml(live_matches)
+        save_epg_to_file(epg_xml)
 
-        print("✅ M3U successfully generated!")
+        print("✅ EPG successfully generated!")
     else:
         print("❌ No live matches available.")
 

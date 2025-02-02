@@ -22,7 +22,7 @@ jobs:
 
       - name: Run Scripts to Generate M3U & EPG
         run: |
-          python generate_m3u  # Updated file path
+          python generate_m3u.py  # Updated file path
           python generate_epg.py
 
       - name: Commit & Push Changes
